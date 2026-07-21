@@ -30,3 +30,8 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# kopdev secific
+kopdev
+kopdev.toml
+dist
