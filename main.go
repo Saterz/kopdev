@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -34,6 +35,19 @@ type PackageConfig struct {
 
 //go:embed all:templates
 var templateFiles embed.FS
+
+func runGit(directory string, args ...string) error {
+	command := exec.Command("git", append([]string{"-C", directory}, args...)...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(output))
+		if message != "" {
+			return fmt.Errorf("%w: %s", err, message)
+		}
+		return err
+	}
+	return nil
+}
 
 func upperFirst(value string) string {
 	characters := []rune(value)
@@ -350,7 +364,6 @@ func runInit(args []string) error {
 		}
 
 		replacer := strings.NewReplacer(
-			"{{PLUGIN_NAME}}", pluginName,
 			"{{PLUGIN_NAME_UPPER_FIRST}}", upperFirst(pluginName),
 			"{{PLUGIN_NAME_LOWER_FIRST}}", lowerFirst(pluginName),
 		)
@@ -364,6 +377,16 @@ func runInit(args []string) error {
 		return nil
 	}); err != nil {
 		return fmt.Errorf("copy %s template: %w", *level, err)
+	}
+
+	if err := runGit(pluginDir, "init", "--initial-branch=main"); err != nil {
+		return fmt.Errorf("initialize Git repository: %w", err)
+	}
+
+	if *level == "full" {
+		if err := runGit(pluginDir, "submodule", "add", "https://github.com/koreader/koreader.git", "koreader"); err != nil {
+			return fmt.Errorf("add KOReader submodule: %w", err)
+		}
 	}
 
 	return nil
