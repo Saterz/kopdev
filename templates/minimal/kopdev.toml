@@ -1,7 +1,23 @@
 [plugin]
 name="{{PLUGIN_NAME_LOWER_FIRST}}"
 source_dir="."
+version = "0.1.0"
 
 [package]
 output_dir="dist"
+exclude=[
+    ".git",
+    "dist",
+    "kopdev.toml"
+]
+
+[deploy]
+default_transport=""
 exclude=[]
+
+[deploy.usb]
+koreader_dir=""
+
+[deploy.ssh]
+target=""
+koreader_dir=""

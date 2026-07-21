@@ -21,16 +21,34 @@ import (
 type Config struct {
 	Plugin  PluginConfig  `toml:"plugin"`
 	Package PackageConfig `toml:"package"`
+	Deploy  DeployConfig  `toml:"deploy"`
 }
 
 type PluginConfig struct {
 	Name      string `toml:"name"`
 	SourceDir string `toml:"source_dir"`
+	Version   string `toml:"version"`
 }
 
 type PackageConfig struct {
 	OutputDir string   `toml:"output_dir"`
 	Exclude   []string `toml:"exclude"`
+}
+
+type DeployConfig struct {
+	DefaultTransport string          `toml:"default_transport"`
+	USB              USBDeployConfig `toml:"usb"`
+	SSH              USBDeployConfig `toml:"ssh"`
+	Exclude          []string        `toml:"exclude"`
+}
+
+type USBDeployConfig struct {
+	KOReaderDir string `toml:"koreader_dir"`
+}
+
+type SSHDeployConfig struct {
+	Target      string `toml:"target"`
+	KOReaderDir string `toml:"koreader_dir"`
 }
 
 //go:embed all:templates
@@ -288,10 +306,10 @@ func run(args []string) error {
 		return runInit(args[1:])
 
 	case "package":
-		return runWithConfig(args, runPackage)
+		return runWithConfig(args[1:], runPackage)
 
 	case "deploy":
-		return runWithConfig(args, runDeploy)
+		return runWithConfig(args[1:], runDeploy)
 
 	case "help", "--help", "-h":
 		printHelp()
@@ -412,7 +430,7 @@ func runPackage(args []string, config Config) error {
 	}
 
 	if pluginDirectory == "" {
-		return errors.New("usage: kopdev package [options] <plugin-directory>")
+		return errors.New("usage: kopdev package [options] [plugin-directory]")
 	}
 
 	if err := createPluginZip(config.Plugin.Name, pluginDirectory, *output, config.Package.Exclude); err != nil {
