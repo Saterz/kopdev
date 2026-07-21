@@ -1,0 +1,7 @@
+[plugin]
+name="{{PLUGIN_NAME_LOWER_FIRST}}"
+source_dir="."
+
+[package]
+output_dir="dist"
+exclude=[]

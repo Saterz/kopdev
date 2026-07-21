@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -30,9 +32,28 @@ type PackageConfig struct {
 	Exclude   []string `toml:"exclude"`
 }
 
+//go:embed all:templates
+var templateFiles embed.FS
+
+func upperFirst(value string) string {
+	characters := []rune(value)
+	if len(characters) > 0 {
+		characters[0] = unicode.ToUpper(characters[0])
+	}
+	return string(characters)
+}
+
+func lowerFirst(value string) string {
+	characters := []rune(value)
+	if len(characters) > 0 {
+		characters[0] = unicode.ToLower(characters[0])
+	}
+	return string(characters)
+}
+
 func validatePluginName(pluginName string) error {
 	if pluginName == "" {
-		return errors.New(`"plugin.name" is required`)
+		return errors.New(`the plugin name is required`)
 	}
 
 	if strings.HasSuffix(pluginName, ".koplugin") {
@@ -224,33 +245,39 @@ func createPluginZip(pluginName string, sourceDir string, outputDir string, excl
 }
 
 func main() {
-	const configPath = "./kopdev.toml"
+	args := os.Args[1:]
 
-	config, err := loadConfig(configPath)
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := run(os.Args[1:], config); err != nil {
+	if err := run(args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string, config Config) error {
+func runWithConfig(args []string, command func([]string, Config) error) error {
+	const configPath = "./kopdev.toml"
+
+	config, err := loadConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+	return command(args, config)
+}
+
+func run(args []string) error {
 	if len(args) == 0 {
 		printHelp()
 		return errors.New("no command given")
 	}
 
 	switch args[0] {
+	case "init":
+		return runInit(args[1:])
+
 	case "package":
-		return runPackage(args[1:], config)
+		return runWithConfig(args, runPackage)
 
 	case "deploy":
-		return runDeploy(args[1:], config)
+		return runWithConfig(args, runDeploy)
 
 	case "help", "--help", "-h":
 		printHelp()
@@ -259,6 +286,87 @@ func run(args []string, config Config) error {
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 
+}
+
+func runInit(args []string) error {
+	flags := flag.NewFlagSet("init", flag.ContinueOnError)
+
+	level := flags.String("level", "minimal", "template level: full or minimal")
+
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+
+	switch *level {
+	case "minimal", "full":
+	default:
+		return fmt.Errorf("unknown template level %q", *level)
+	}
+
+	positionalArgs := flags.Args()
+
+	if len(positionalArgs) < 1 || len(positionalArgs) > 2 {
+		return errors.New("usage: kopdev init [options] <plugin-name> [plugin-directory]")
+	}
+
+	pluginName := positionalArgs[0]
+	pluginDir := "."
+
+	if len(positionalArgs) == 2 {
+		pluginDir = positionalArgs[1]
+	}
+
+	if err := validatePluginName(pluginName); err != nil {
+		return fmt.Errorf("init: %w", err)
+	}
+
+	pluginDir = filepath.Join(pluginDir, pluginName+".koplugin")
+
+	templateRoot, err := fs.Sub(templateFiles, "templates/"+*level)
+	if err != nil {
+		return fmt.Errorf("load %s template: %w", *level, err)
+	}
+
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		return fmt.Errorf("creating plugin directory: %w", err)
+	}
+
+	if err := fs.WalkDir(templateRoot, ".", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		path = filepath.FromSlash(path)
+
+		destination := filepath.Join(pluginDir, path)
+
+		if entry.IsDir() {
+			return os.MkdirAll(destination, 0o755)
+		}
+
+		contents, err := fs.ReadFile(templateRoot, path)
+		if err != nil {
+			return fmt.Errorf("read template file %q: %w", path, err)
+		}
+
+		replacer := strings.NewReplacer(
+			"{{PLUGIN_NAME}}", pluginName,
+			"{{PLUGIN_NAME_UPPER_FIRST}}", upperFirst(pluginName),
+			"{{PLUGIN_NAME_LOWER_FIRST}}", lowerFirst(pluginName),
+		)
+
+		contents = []byte(replacer.Replace(string(contents)))
+
+		if err := os.WriteFile(destination, contents, 0o644); err != nil {
+			return fmt.Errorf("write plugin file %q: %w", path, err)
+		}
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("copy %s template: %w", *level, err)
+	}
+
+	return nil
 }
 
 func runPackage(args []string, config Config) error {
@@ -304,6 +412,7 @@ Usage:
 	
 The commands are:
 
+	init         create a KOReader plugin project from a template
 	package      package a KOReader plugin into a ZIP file
 	deploy       deploys the plugin to a remote device`)
 }
