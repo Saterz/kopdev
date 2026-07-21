@@ -33,5 +33,5 @@ go.work.sum
 
 # kopdev secific
 kopdev
-kopdev.toml
-dist
+./kopdev.toml
+dist/
