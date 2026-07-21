@@ -32,7 +32,7 @@ type PackageConfig struct {
 
 func validatePluginName(pluginName string) error {
 	if pluginName == "" {
-		return errors.New(`config: "plugin.name" is required`)
+		return errors.New(`"plugin.name" is required`)
 	}
 
 	if strings.HasSuffix(pluginName, ".koplugin") {
