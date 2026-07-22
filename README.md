@@ -10,4 +10,5 @@ A utility program for developing KOReader plugins
 - Add the ability to automatically restart KOReader after deploying
 - Add the ability to manage changelogs
 - Add the ability to include custom file paths which you want to include in the package
-- Prevent replacing a previous package
+- Prevent replacing a previous package when running the package plugin
+- Before replacing the previous package in deploy create a backup and delete it later when it succeeds
