@@ -1,12 +1,14 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
-	"io"
-	"io/fs"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
+	"strings"
 )
 
 func deployUSB(pluginName string, sourceDir string, KOReaderDir string, exclude []string) error {
@@ -28,74 +30,7 @@ func deployUSB(pluginName string, sourceDir string, KOReaderDir string, exclude 
 	}
 	defer os.RemoveAll(tempOutputDir)
 
-	if err := filepath.WalkDir(sourceDir, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-
-		relativePath, err := filepath.Rel(sourceDir, path)
-		if err != nil {
-			return fmt.Errorf(
-				"calculate relative path for %q: %w",
-				path,
-				err,
-			)
-		}
-
-		excluded, err := matchesExclude(relativePath, exclude)
-		if err != nil {
-			return err
-		}
-
-		if excluded {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-
-			return nil
-		}
-
-		if entry.IsDir() {
-			return nil
-		}
-
-		if isSymlink(entry) {
-			return fmt.Errorf("symbolic links are not supported: %q", path)
-		}
-
-		tempDestinationPath := filepath.Join(tempOutputDir, relativePath)
-
-		if err := os.MkdirAll(filepath.Dir(tempDestinationPath), 0o755); err != nil {
-			return err
-		}
-
-		destination, err := os.Create(tempDestinationPath)
-		if err != nil {
-			return err
-		}
-
-		source, err := os.Open(path)
-		if err != nil {
-			destination.Close()
-			return fmt.Errorf("read file: %w", err)
-		}
-
-		_, err = io.Copy(destination, source)
-		if err != nil {
-			destination.Close()
-			source.Close()
-			return err
-		}
-
-		if err := destination.Close(); err != nil {
-			source.Close()
-			return err
-		}
-
-		err = source.Close()
-
-		return err
-	}); err != nil {
+	if err := copyFilteredFiles(sourceDir, tempOutputDir, exclude); err != nil {
 		return fmt.Errorf("deploy plugin: %w", err)
 	}
 
@@ -110,7 +45,56 @@ func deployUSB(pluginName string, sourceDir string, KOReaderDir string, exclude 
 	return nil
 }
 
-func deploySSH(pluginName string, sourceDir string, outputDir string, exclude []string) error {
+func deploySSH(SSHTarget string, pluginName string, sourceDir string, KOReaderDir string, exclude []string) error {
+	stagingDir, err := os.MkdirTemp("", "kopdev-deploy-*")
+	if err != nil {
+		return fmt.Errorf("create deploy staging directory: %w", err)
+	}
+	defer os.RemoveAll(stagingDir)
+
+	if err := copyFilteredFiles(sourceDir, stagingDir, exclude); err != nil {
+		return fmt.Errorf("prepare deployment: %w", err)
+	}
+
+	KOReaderDir = path.Clean(KOReaderDir)
+
+	pluginsDir := path.Join(KOReaderDir, "plugins")
+
+	pluginFolderName := pluginName + ".koplugin"
+	outputDir := path.Join(pluginsDir, pluginFolderName)
+	tempOutputDir := outputDir + ".kopdev-temp"
+
+	rmCommand := exec.Command("ssh", SSHTarget, fmt.Sprintf("test -d -- %s && rm -rf -- %s && mkdir -- %s", shellQuote(pluginsDir), shellQuote(tempOutputDir), shellQuote(tempOutputDir)))
+	rmOutput, err := rmCommand.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(rmOutput))
+		if message != "" {
+			return fmt.Errorf("%w: %s", err, message)
+		}
+		return err
+	}
+
+	scpSource := stagingDir + string(os.PathSeparator) + "."
+	scpCommand := exec.Command("scp", "-r", scpSource, fmt.Sprintf("%s:%s/", SSHTarget, tempOutputDir))
+	scpOutput, err := scpCommand.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(scpOutput))
+		if message != "" {
+			return fmt.Errorf("%w: %s", err, message)
+		}
+		return err
+	}
+
+	mvCommand := exec.Command("ssh", SSHTarget, fmt.Sprintf("rm -rf -- %s && mv -- %s %s", shellQuote(outputDir), shellQuote(tempOutputDir), shellQuote(outputDir)))
+	mvOutput, err := mvCommand.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(mvOutput))
+		if message != "" {
+			return fmt.Errorf("%w: %s", err, message)
+		}
+		return err
+	}
+
 	return nil
 }
 
@@ -118,6 +102,8 @@ func runDeploy(args []string, config Config) error {
 	flags := flag.NewFlagSet("deploy", flag.ContinueOnError)
 
 	transport := flags.String("transport", config.Deploy.DefaultTransport, "deployment transport method: usb or ssh")
+
+	target := flags.String("target", config.Deploy.SSH.Target, "the remote target when deploying through SSH")
 
 	koreaderDir := flags.String("koreader-dir", "", "remote KOReader directory")
 
@@ -134,6 +120,10 @@ func runDeploy(args []string, config Config) error {
 		}
 	}
 
+	if !path.IsAbs(*koreaderDir) {
+		return errors.New("remote KOReader directory must be absolute")
+	}
+
 	positionalArgs := flags.Args()
 
 	pluginName := config.Plugin.Name
@@ -147,7 +137,7 @@ func runDeploy(args []string, config Config) error {
 	case "usb":
 		return deployUSB(pluginName, pluginDir, *koreaderDir, config.Deploy.Exclude)
 	case "ssh":
-		return deploySSH(pluginName, pluginDir, *koreaderDir, config.Deploy.Exclude)
+		return deploySSH(*target, pluginName, pluginDir, *koreaderDir, config.Deploy.Exclude)
 	default:
 		return fmt.Errorf("unknown deployment transport %q: expected usb or ssh", *transport)
 	}
