@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -111,6 +110,10 @@ func runDeploy(args []string, config Config) error {
 		return err
 	}
 
+	if *transport != "usb" && *transport != "ssh" {
+		return fmt.Errorf("unknown deployment transport %q: expected usb or ssh", *transport)
+	}
+
 	if *koreaderDir == "" {
 		switch *transport {
 		case "usb":
@@ -121,7 +124,7 @@ func runDeploy(args []string, config Config) error {
 	}
 
 	if !path.IsAbs(*koreaderDir) {
-		return errors.New("remote KOReader directory must be absolute")
+		return fmt.Errorf("remote KOReader directory %s must be absolute", *koreaderDir)
 	}
 
 	positionalArgs := flags.Args()
@@ -138,7 +141,7 @@ func runDeploy(args []string, config Config) error {
 		return deployUSB(pluginName, pluginDir, *koreaderDir, config.Deploy.Exclude)
 	case "ssh":
 		return deploySSH(*target, pluginName, pluginDir, *koreaderDir, config.Deploy.Exclude)
-	default:
-		return fmt.Errorf("unknown deployment transport %q: expected usb or ssh", *transport)
 	}
+
+	return nil
 }
