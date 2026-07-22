@@ -63,7 +63,7 @@ func deploySSH(SSHTarget string, pluginName string, sourceDir string, KOReaderDi
 	outputDir := path.Join(pluginsDir, pluginFolderName)
 	tempOutputDir := outputDir + ".kopdev-temp"
 
-	rmCommand := exec.Command("ssh", SSHTarget, fmt.Sprintf("test -d -- %s && rm -rf -- %s && mkdir -- %s", shellQuote(pluginsDir), shellQuote(tempOutputDir), shellQuote(tempOutputDir)))
+	rmCommand := exec.Command("ssh", SSHTarget, fmt.Sprintf("test -d %s && rm -rf -- %s && mkdir -- %s", shellQuote(pluginsDir), shellQuote(tempOutputDir), shellQuote(tempOutputDir)))
 	rmOutput, err := rmCommand.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(rmOutput))
