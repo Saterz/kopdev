@@ -2,14 +2,11 @@ package main
 
 import (
 	"bytes"
-	"embed"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"strings"
-	"unicode"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -45,64 +42,6 @@ type USBDeployConfig struct {
 type SSHDeployConfig struct {
 	Target      string `toml:"target"`
 	KOReaderDir string `toml:"koreader_dir"`
-}
-
-//go:embed all:templates
-var templateFiles embed.FS
-
-func runGit(directory string, args ...string) error {
-	command := exec.Command("git", append([]string{"-C", directory}, args...)...)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		message := strings.TrimSpace(string(output))
-		if message != "" {
-			return fmt.Errorf("%w: %s", err, message)
-		}
-		return err
-	}
-	return nil
-}
-
-func runSSH(directory string, args ...string) error {
-	command := exec.Command("ssh", args...)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		message := strings.TrimSpace(string(output))
-		if message != "" {
-			return fmt.Errorf("%w: %s", err, message)
-		}
-		return err
-	}
-	return nil
-}
-
-func runSCP(directory string, args ...string) error {
-	command := exec.Command("scp", args...)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		message := strings.TrimSpace(string(output))
-		if message != "" {
-			return fmt.Errorf("%w: %s", err, message)
-		}
-		return err
-	}
-	return nil
-}
-
-func upperFirst(value string) string {
-	characters := []rune(value)
-	if len(characters) > 0 {
-		characters[0] = unicode.ToUpper(characters[0])
-	}
-	return string(characters)
-}
-
-func lowerFirst(value string) string {
-	characters := []rune(value)
-	if len(characters) > 0 {
-		characters[0] = unicode.ToLower(characters[0])
-	}
-	return string(characters)
 }
 
 func validatePluginName(pluginName string) error {

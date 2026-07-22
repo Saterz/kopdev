@@ -34,7 +34,7 @@ func createPluginZip(pluginName string, sourceDir string, outputDir string, excl
 
 	zipWriter := zip.NewWriter(outputFile)
 
-	err = filepath.WalkDir(sourceDir, func(path string, entry fs.DirEntry, walkErr error) error {
+	if err := filepath.WalkDir(sourceDir, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -111,9 +111,7 @@ func createPluginZip(pluginName string, sourceDir string, outputDir string, excl
 		}
 
 		return nil
-	})
-
-	if err != nil {
+	}); err != nil {
 		zipWriter.Close()
 		outputFile.Close()
 		os.Remove(outputPath)
