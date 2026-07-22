@@ -44,6 +44,8 @@ type SSHDeployConfig struct {
 	KOReaderDir string `toml:"koreader_dir"`
 }
 
+var version string = "development"
+
 func validatePluginName(pluginName string) error {
 	if pluginName == "" {
 		return errors.New(`the plugin name is required`)
@@ -131,6 +133,16 @@ func run(args []string) error {
 	case "deploy":
 		return runWithConfig(args[1:], runDeploy)
 
+	// case "minify":
+	// 	return runMinify(args[1:])
+
+	case "version", "--version", "-v":
+		if len(args) != 1 {
+			return errors.New("usage: kopdev version")
+		}
+		fmt.Printf("Kopdev %s\n", version)
+		return nil
+
 	case "help", "--help", "-h":
 		return runHelp(args[1:])
 	default:
@@ -162,7 +174,9 @@ func runHelp(args []string) error {
 		"The commands are:\n\n" +
 		"\tinit         create a KOReader plugin project from a template\n" +
 		"\tpackage      package a KOReader plugin into a ZIP file\n" +
-		"\tdeploy       deploys the plugin to a remote device\n\n" +
+		"\tdeploy       deploys the plugin to a remote device\n" +
+		// "\tminify       minify the code to \n" +
+		"\tversion      print the kopdev version\n\n" +
 		"Use \"kopdev help <command>\" for more information about a command.")
 
 	return nil
