@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -100,6 +101,14 @@ func deploySSH(SSHTarget string, pluginName string, sourceDir string, KOReaderDi
 func runDeploy(args []string, config Config) error {
 	flags := flag.NewFlagSet("deploy", flag.ContinueOnError)
 
+	setUsage(
+		flags,
+		"kopdev deploy [options] [plugin-directory]",
+		"Deploy the plugin to a KOReader installation over USB or SSH.",
+		"\tplugin-directory  Plugin source directory. Defaults to plugin.source_dir in kopdev.toml.",
+		"\tkopdev deploy --transport usb --koreader-dir /media/koreader\n\tkopdev deploy --transport ssh --target root@ereader",
+	)
+
 	transport := flags.String("transport", config.Deploy.DefaultTransport, "deployment transport method: usb or ssh")
 
 	target := flags.String("target", config.Deploy.SSH.Target, "the remote target when deploying through SSH")
@@ -107,6 +116,9 @@ func runDeploy(args []string, config Config) error {
 	koreaderDir := flags.String("koreader-dir", "", "KOReader directory")
 
 	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 

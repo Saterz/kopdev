@@ -31,9 +31,20 @@ func runGit(directory string, args ...string) error {
 func runInit(args []string) error {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
 
+	setUsage(
+		flags,
+		"kopdev init [options] <plugin-name> [plugin-directory]",
+		"Create a new KOReader plugin project from a template.",
+		"\tplugin-name       Name of the plugin without the .koplugin suffix.\n\tplugin-directory  Parent directory for the project. Defaults to \".\".",
+		"\tkopdev init my-awesome-plugin\n\tkopdev init --level full my-awesome-plugin ./plugins",
+	)
+
 	level := flags.String("level", "minimal", "template level: full or minimal")
 
 	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 

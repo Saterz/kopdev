@@ -134,11 +134,22 @@ func createPluginZip(pluginName string, sourceDir string, outputDir string, excl
 func runPackage(args []string, config Config) error {
 	flags := flag.NewFlagSet("package", flag.ContinueOnError)
 
+	setUsage(
+		flags,
+		"kopdev package [options] [plugin-directory]",
+		"Create a ZIP archive containing the plugin.",
+		"\tplugin-directory  Plugin source directory. Defaults to plugin.source_dir in kopdev.toml.",
+		"\tkopdev package\n\tkopdev package ./src\n\tkopdev package --output releases",
+	)
+
 	output := flags.String("output", config.Package.OutputDir, "output directory of the ZIP file")
 
 	// force := flags.Bool("force", false, "overwrite an existing ZIP file")
 
 	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 

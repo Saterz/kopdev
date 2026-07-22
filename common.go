@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -9,6 +10,23 @@ import (
 	"strings"
 	"unicode"
 )
+
+func setUsage(flags *flag.FlagSet, usage, description, arguments, examples string) {
+	flags.Usage = func() {
+		fmt.Fprintf(flags.Output(), "Usage: %s\n\n%s\n", usage, description)
+
+		if arguments != "" {
+			fmt.Fprintf(flags.Output(), "\nArguments:\n%s\n", arguments)
+		}
+
+		fmt.Fprintln(flags.Output(), "\nOptions:")
+		flags.PrintDefaults()
+
+		if examples != "" {
+			fmt.Fprintf(flags.Output(), "\nExamples:\n%s\n", examples)
+		}
+	}
+}
 
 func upperFirst(value string) string {
 	characters := []rune(value)

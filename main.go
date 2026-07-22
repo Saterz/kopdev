@@ -57,11 +57,7 @@ func validatePluginName(pluginName string) error {
 }
 
 func loadConfig(path string) (Config, error) {
-	config := Config{
-		Package: PackageConfig{
-			OutputDir: "dist",
-		},
-	}
+	config := defaultConfig()
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -82,6 +78,14 @@ func loadConfig(path string) (Config, error) {
 	return config, nil
 }
 
+func defaultConfig() Config {
+	return Config{
+		Package: PackageConfig{
+			OutputDir: "dist",
+		},
+	}
+}
+
 func isSymlink(entry fs.DirEntry) bool {
 	return entry.Type()&os.ModeSymlink != 0
 }
@@ -98,6 +102,12 @@ func main() {
 func runWithConfig(args []string, command func([]string, Config) error) error {
 	const configPath = "./kopdev.toml"
 
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			return command(args, defaultConfig())
+		}
+	}
+
 	config, err := loadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
@@ -107,7 +117,7 @@ func runWithConfig(args []string, command func([]string, Config) error) error {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		printHelp()
+		runHelp(nil)
 		return errors.New("no command given; run \"kopdev help\" for usage")
 	}
 
@@ -122,24 +132,38 @@ func run(args []string) error {
 		return runWithConfig(args[1:], runDeploy)
 
 	case "help", "--help", "-h":
-		printHelp()
-		return nil
+		return runHelp(args[1:])
 	default:
 		return fmt.Errorf("unknown command %q; run \"kopdev help\" for usage", args[0])
 	}
 
 }
 
-func printHelp() {
-	fmt.Println(`Kopdev is a utility program to help develop KOReader plugins
+func runHelp(args []string) error {
+	if len(args) > 1 {
+		return errors.New("usage: kopdev help [command]")
+	}
 
-Usage:
+	if len(args) == 1 {
+		switch args[0] {
+		case "init":
+			return runInit([]string{"--help"})
+		case "package":
+			return runPackage([]string{"--help"}, defaultConfig())
+		case "deploy":
+			return runDeploy([]string{"--help"}, defaultConfig())
+		default:
+			return fmt.Errorf("unknown help topic %q; run \"kopdev help\" for available commands", args[0])
+		}
+	}
 
-	kopdev <command> [arguments]
-	
-The commands are:
+	fmt.Println("Kopdev is a utility program to help develop KOReader plugins\n\n" +
+		"Usage:\n\n\tkopdev <command> [arguments]\n\n" +
+		"The commands are:\n\n" +
+		"\tinit         create a KOReader plugin project from a template\n" +
+		"\tpackage      package a KOReader plugin into a ZIP file\n" +
+		"\tdeploy       deploys the plugin to a remote device\n\n" +
+		"Use \"kopdev help <command>\" for more information about a command.")
 
-	init         create a KOReader plugin project from a template
-	package      package a KOReader plugin into a ZIP file
-	deploy       deploys the plugin to a remote device`)
+	return nil
 }
