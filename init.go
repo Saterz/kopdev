@@ -40,7 +40,7 @@ func runInit(args []string) error {
 	switch *level {
 	case "minimal", "full":
 	default:
-		return fmt.Errorf("unknown template level %q", *level)
+		return fmt.Errorf("unknown template level %q: expected minimal or full", *level)
 	}
 
 	positionalArgs := flags.Args()
@@ -115,5 +115,6 @@ func runInit(args []string) error {
 		}
 	}
 
+	fmt.Printf("Created plugin %q in %s\n", pluginName, pluginDir)
 	return nil
 }

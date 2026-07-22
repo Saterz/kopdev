@@ -65,14 +65,14 @@ func loadConfig(path string) (Config, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("read config: %w", err)
+		return Config{}, fmt.Errorf("read %q: %w", path, err)
 	}
 
 	decoder := toml.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 
 	if err := decoder.Decode(&config); err != nil {
-		return Config{}, fmt.Errorf("parse %q %w", path, err)
+		return Config{}, fmt.Errorf("parse %q: %w", path, err)
 	}
 
 	if err := validatePluginName(config.Plugin.Name); err != nil {
@@ -108,7 +108,7 @@ func runWithConfig(args []string, command func([]string, Config) error) error {
 func run(args []string) error {
 	if len(args) == 0 {
 		printHelp()
-		return errors.New("no command given")
+		return errors.New("no command given; run \"kopdev help\" for usage")
 	}
 
 	switch args[0] {
@@ -125,7 +125,7 @@ func run(args []string) error {
 		printHelp()
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q", args[0])
+		return fmt.Errorf("unknown command %q; run \"kopdev help\" for usage", args[0])
 	}
 
 }

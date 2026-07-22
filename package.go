@@ -41,7 +41,7 @@ func createPluginZip(pluginName string, sourceDir string, outputDir string, excl
 
 		absolutePath, absolutePathErr := filepath.Abs(path)
 		if absolutePathErr != nil {
-			return fmt.Errorf("resolve path %s, %w", path, err)
+			return fmt.Errorf("resolve path %q: %w", path, absolutePathErr)
 		}
 
 		if absolutePath == absoluteOutputPath {
@@ -143,6 +143,9 @@ func runPackage(args []string, config Config) error {
 	}
 
 	positionalArgs := flags.Args()
+	if len(positionalArgs) > 1 {
+		return errors.New("usage: kopdev package [options] [plugin-directory]")
+	}
 
 	pluginDirectory := config.Plugin.SourceDir
 
@@ -155,8 +158,9 @@ func runPackage(args []string, config Config) error {
 	}
 
 	if err := createPluginZip(config.Plugin.Name, pluginDirectory, *output, config.Package.Exclude); err != nil {
-		return fmt.Errorf("package plugin: %w", err)
+		return err
 	}
 
+	fmt.Printf("Packaged plugin to %s\n", filepath.Join(*output, config.Plugin.Name+".zip"))
 	return nil
 }
