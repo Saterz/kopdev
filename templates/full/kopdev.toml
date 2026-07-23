@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [package]
 output_dir="dist"
+minify=false
 exclude=[
     ".git",
     "dist",
@@ -22,4 +23,3 @@ koreader_dir=""
 [deploy.ssh]
 target=""
 koreader_dir=""
-

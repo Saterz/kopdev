@@ -26,6 +26,7 @@ type PluginConfig struct {
 type PackageConfig struct {
 	OutputDir string   `toml:"output_dir"`
 	Exclude   []string `toml:"exclude"`
+	Minify    bool     `toml:"minify"`
 }
 
 type DeployConfig struct {
@@ -133,9 +134,6 @@ func run(args []string) error {
 	case "deploy":
 		return runWithConfig(args[1:], runDeploy)
 
-	// case "minify":
-	// 	return runMinify(args[1:])
-
 	case "version", "--version", "-v":
 		if len(args) != 1 {
 			return errors.New("usage: kopdev version")
@@ -175,7 +173,6 @@ func runHelp(args []string) error {
 		"\tinit         create a KOReader plugin project from a template\n" +
 		"\tpackage      package a KOReader plugin into a ZIP file\n" +
 		"\tdeploy       deploys the plugin to a remote device\n" +
-		// "\tminify       minify the code to \n" +
 		"\tversion      print the kopdev version\n\n" +
 		"Use \"kopdev help <command>\" for more information about a command.")
 
