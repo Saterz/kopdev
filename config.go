@@ -222,7 +222,7 @@ func runConfig(args []string) error {
 		}
 		for _, key := range userConfigKeys {
 			value, _ := userConfigValue(config, key)
-			fmt.Printf("%s = %q\n", key, value)
+			fmt.Printf("%s=%s\n", key, value)
 		}
 	case "get":
 		if len(args) != 2 {
