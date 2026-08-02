@@ -13,13 +13,4 @@ exclude=[
 ]
 
 [deploy]
-default_transport=""
 exclude=[]
-
-[deploy.usb]
-koreader_dir=""
-
-[deploy.ssh]
-target=""
-koreader_dir=""
-

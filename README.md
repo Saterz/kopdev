@@ -1,6 +1,43 @@
 # kopdev
 
-A utility program for developing KOReader plugins
+A utility program for developing KOReader plugins.
+
+## Configuration
+
+Kopdev separates project settings from settings that belong to the current user.
+
+Each plugin project keeps `kopdev.toml` in its root. It contains the plugin name,
+source directory, version, package options, and deployment exclusions:
+
+```toml
+[plugin]
+name = "my-plugin"
+source_dir = "src"
+version = "0.1.0"
+
+[package]
+output_dir = "dist"
+exclude = [".git", "dist", "kopdev.toml"]
+
+[deploy]
+exclude = []
+```
+
+Deployment destinations belong to the developer and are stored in the operating
+system's user config directory. Manage them without editing the file directly:
+
+```sh
+kopdev config set deploy.default_transport ssh
+kopdev config set deploy.ssh.target root@ereader
+kopdev config set deploy.ssh.koreader_dir /mnt/onboard/.adds/koreader
+kopdev config list
+```
+
+Use `kopdev config path` to print the user config file location, `kopdev config
+get <key>` to read one value, and `kopdev config unset <key>` to clear one.
+
+Existing projects must remove `deploy.default_transport`, `deploy.usb`, and
+`deploy.ssh` from `kopdev.toml` and set those values with `kopdev config set`.
 
 ## TODO
 

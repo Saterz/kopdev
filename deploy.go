@@ -67,32 +67,20 @@ func deploySSH(SSHTarget string, pluginName string, sourceDir string, KOReaderDi
 	rmCommand := exec.Command("ssh", SSHTarget, fmt.Sprintf("test -d %s && rm -rf -- %s && mkdir -- %s", shellQuote(pluginsDir), shellQuote(tempOutputDir), shellQuote(tempOutputDir)))
 	rmOutput, err := rmCommand.CombinedOutput()
 	if err != nil {
-		message := strings.TrimSpace(string(rmOutput))
-		if message != "" {
-			return fmt.Errorf("prepare remote directory on %q: %w: %s", SSHTarget, err, message)
-		}
-		return fmt.Errorf("prepare remote directory on %q: %w", SSHTarget, err)
+		return fmt.Errorf("prepare remote directory on %q: %w", SSHTarget, commandError(err, rmOutput))
 	}
 
 	scpSource := stagingDir + string(os.PathSeparator) + "."
 	scpCommand := exec.Command("scp", "-r", scpSource, fmt.Sprintf("%s:%s/", SSHTarget, tempOutputDir))
 	scpOutput, err := scpCommand.CombinedOutput()
 	if err != nil {
-		message := strings.TrimSpace(string(scpOutput))
-		if message != "" {
-			return fmt.Errorf("copy plugin to %q: %w: %s", SSHTarget, err, message)
-		}
-		return fmt.Errorf("copy plugin to %q: %w", SSHTarget, err)
+		return fmt.Errorf("copy plugin to %q: %w", SSHTarget, commandError(err, scpOutput))
 	}
 
 	mvCommand := exec.Command("ssh", SSHTarget, fmt.Sprintf("rm -rf -- %s && mv -- %s %s", shellQuote(outputDir), shellQuote(tempOutputDir), shellQuote(outputDir)))
 	mvOutput, err := mvCommand.CombinedOutput()
 	if err != nil {
-		message := strings.TrimSpace(string(mvOutput))
-		if message != "" {
-			return fmt.Errorf("install plugin on %q: %w: %s", SSHTarget, err, message)
-		}
-		return fmt.Errorf("install plugin on %q: %w", SSHTarget, err)
+		return fmt.Errorf("install plugin on %q: %w", SSHTarget, commandError(err, mvOutput))
 	}
 
 	return nil

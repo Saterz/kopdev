@@ -19,11 +19,7 @@ func runGit(directory string, args ...string) error {
 	command := exec.Command("git", append([]string{"-C", directory}, args...)...)
 	output, err := command.CombinedOutput()
 	if err != nil {
-		message := strings.TrimSpace(string(output))
-		if message != "" {
-			return fmt.Errorf("%w: %s", err, message)
-		}
-		return err
+		return commandError(err, output)
 	}
 	return nil
 }
