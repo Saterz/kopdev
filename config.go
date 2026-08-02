@@ -183,13 +183,13 @@ func setUserConfigValue(config *userConfig, key, value string) error {
 }
 
 func printConfigUsage() {
-	fmt.Println(`Usage:
-
-	kopdev config list
-	kopdev config get <key>
-	kopdev config set <key> <value>
-	kopdev config unset <key>
-	kopdev config path`)
+	fmt.Println("Usage:\n\n" +
+		"Manage global configs\n\n" +
+		"\tkopdev config list\n" +
+		"\tkopdev config get <key>\n" +
+		"\tkopdev config set <key> <value>\n" +
+		"\tkopdev config unset <key>\n" +
+		"\tkopdev config path")
 }
 
 func runConfig(args []string) error {
