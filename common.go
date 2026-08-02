@@ -11,6 +11,14 @@ import (
 	"unicode"
 )
 
+func commandError(err error, output []byte) error {
+	message := strings.TrimSpace(string(output))
+	if message != "" {
+		return fmt.Errorf("%w: %s", err, message)
+	}
+	return err
+}
+
 func setUsage(flags *flag.FlagSet, usage, description, arguments, examples string) {
 	flags.Usage = func() {
 		fmt.Fprintf(flags.Output(), "Usage: %s\n\n%s\n", usage, description)
