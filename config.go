@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/spf13/viper"
@@ -189,6 +190,7 @@ func printConfigUsage() {
 		"\tkopdev config get <key>\n" +
 		"\tkopdev config set <key> <value>\n" +
 		"\tkopdev config unset <key>\n" +
+		"\tkopdev config edit\n" +
 		"\tkopdev config path")
 }
 
@@ -255,6 +257,18 @@ func runConfig(args []string) error {
 			return err
 		}
 		fmt.Printf("Unset %s\n", args[1])
+	case "edit":
+		path, err := getUserConfigPath()
+		if err != nil {
+			return err
+		}
+		command := exec.Command("vim", path)
+		command.Stdin = os.Stdin
+		command.Stdout = os.Stdout
+		command.Stderr = os.Stderr
+		if err := command.Run(); err != nil {
+			return fmt.Errorf("edit config: %w", err)
+		}
 	default:
 		return fmt.Errorf("unknown config command %q; run \"kopdev help config\" for usage", args[0])
 	}
