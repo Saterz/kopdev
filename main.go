@@ -87,7 +87,7 @@ func runWithConfig(args []string, command func([]string, Config) error) error {
 func run(args []string) error {
 	if len(args) == 0 {
 		runHelp(nil)
-		return errors.New("no command given; run \"kopdev help\" for usage")
+		return nil
 	}
 
 	switch args[0] {
