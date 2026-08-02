@@ -67,17 +67,6 @@ func loadProjectConfig(path string) (projectConfig, error) {
 		return projectConfig{}, fmt.Errorf("read %q: %w", path, err)
 	}
 
-	for _, key := range userConfigKeys {
-		if v.IsSet(key) {
-			return projectConfig{}, fmt.Errorf(
-				"%q is user-specific; move it from %s to the user config with \"kopdev config set %s <value>\"",
-				key,
-				path,
-				key,
-			)
-		}
-	}
-
 	if err := v.UnmarshalExact(&config); err != nil {
 		return projectConfig{}, fmt.Errorf("parse %q: %w", path, err)
 	}
@@ -200,16 +189,7 @@ func printConfigUsage() {
 	kopdev config get <key>
 	kopdev config set <key> <value>
 	kopdev config unset <key>
-	kopdev config path
-
-Manage settings that belong to the current user rather than one plugin project.
-
-Keys:
-
-	deploy.default_transport
-	deploy.usb.koreader_dir
-	deploy.ssh.target
-	deploy.ssh.koreader_dir`)
+	kopdev config path`)
 }
 
 func runConfig(args []string) error {
