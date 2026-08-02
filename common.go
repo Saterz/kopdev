@@ -56,6 +56,15 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
+func safeFilename(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' {
+			return r
+		}
+		return '_'
+	}, value)
+}
+
 func matchesExclude(path string, exclude []string) (bool, error) {
 	path = filepath.Clean(path)
 	fileName := filepath.Base(path)

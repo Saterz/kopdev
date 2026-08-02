@@ -99,6 +99,8 @@ func run(args []string) error {
 		return runWithConfig(args[1:], runDeploy)
 	case "config":
 		return runConfig(args[1:])
+	case "test":
+		return runTest(args[1:])
 	case "version", "--version", "-v":
 		if len(args) != 1 {
 			return errors.New("usage: kopdev version")
