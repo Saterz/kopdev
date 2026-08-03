@@ -118,12 +118,9 @@ func runTest(args []string) error {
 
 	// Clones KOReader is not done already
 	if !koreaderCloned(cloneDir) {
-		fmt.Printf("Cloning KOReader %s at %s\n", KOReaderDefaultVersion, cloneDir)
 		if err := cloneKOReader(KOReaderDefaultVersion, cloneDir); err != nil {
 			return err
 		}
-	} else {
-		fmt.Println("Using cached KOReader")
 	}
 
 	// Moves the process to the new cloned directory (needs thinking)
@@ -132,19 +129,16 @@ func runTest(args []string) error {
 	}
 
 	// Builds the cloned KOReader instance
-	fmt.Println("Building KOReader")
 	if err := buildKOReader(); err != nil {
 		return err
 	}
 
 	// Injects the Kontroller plugin and patches
-	fmt.Println("Injecting Kontroller plugin and patches")
 	if err := injectKontroller(tempDir, runDir); err != nil {
 		return err
 	}
 
 	// Runs KOReader
-	fmt.Println("Running KOReader")
 	if err := runKOReader(runDir, logsPath); err != nil {
 		return err
 	}
