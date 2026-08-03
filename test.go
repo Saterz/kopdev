@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,6 +24,21 @@ var KontrollerEndpointURL = "http://127.0.0.1:8060/jsonrpc"
 
 var KOReaderCloneURL = "https://github.com/koreader/koreader.git"
 var KOReaderDefaultVersion = "v2026.07"
+
+func findEmulatorDir(cloneDir string) (string, error) {
+	pattern := filepath.Join(cloneDir, "koreader-emulator-*-debug")
+
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return "", fmt.Errorf("find emulator directory: %w", err)
+	}
+
+	if len(matches) != 1 {
+		return "", fmt.Errorf("expected one emulator directory matching %q, found %d", pattern, len(matches))
+	}
+
+	return matches[0], nil
+}
 
 func koreaderCloned(cloneDir string) bool {
 	info, err := os.Stat(filepath.Join(cloneDir, ".git"))
@@ -49,15 +65,15 @@ func buildKOReader(cloneDir string) error {
 	return nil
 }
 
-func injectKontroller(tempDir string, runDir string) error {
+func injectKontroller(tempDir string, runDir string) (string, error) {
 	kontrollerCloneDir := filepath.Join(tempDir, "kontroller")
 	if err := os.MkdirAll(kontrollerCloneDir, 0o755); err != nil {
-		return err
+		return "", err
 	}
 
 	cloneCommand := exec.Command("git", "clone", "--depth", "1", KontrollerCloneURL, kontrollerCloneDir)
 	if err := cloneCommand.Run(); err != nil {
-		return fmt.Errorf("clone kontroller: %w", err)
+		return "", fmt.Errorf("clone kontroller: %w", err)
 	}
 
 	kontrollerPluginsDir := filepath.Join(kontrollerCloneDir, "plugins")
@@ -67,20 +83,20 @@ func injectKontroller(tempDir string, runDir string) error {
 	runPatchesDir := filepath.Join(runDir, "patches")
 
 	if err := os.Mkdir(runPluginsDir, 0o755); err != nil {
-		return err
+		return "", err
 	}
 	if err := os.Mkdir(runPatchesDir, 0o755); err != nil {
-		return err
+		return "", err
 	}
 
 	if err := copyFilteredFiles(kontrollerPluginsDir, runPluginsDir, nil); err != nil {
-		return fmt.Errorf("copy Kontroller plugin: %w", err)
+		return "", fmt.Errorf("copy Kontroller plugin: %w", err)
 	}
 	if err := copyFilteredFiles(kontrollerPatchesDir, runPatchesDir, nil); err != nil {
-		return fmt.Errorf("copy Kontroller patches: %w", err)
+		return "", fmt.Errorf("copy Kontroller patches: %w", err)
 	}
 
-	return nil
+	return kontrollerCloneDir, nil
 }
 
 func injectUserPlugin(pluginName string, srcDir string, runDir string, excluded []string) error {
@@ -200,6 +216,12 @@ func runTest(args []string, config Config) error {
 		return nil
 	}
 
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get project directory: %w", err)
+	}
+	specDir := filepath.Join(projectDir, "specs")
+
 	// Clones KOReader if not done already
 	if !koreaderCloned(cloneDir) {
 		if err := cloneKOReader(KOReaderDefaultVersion, cloneDir); err != nil {
@@ -213,7 +235,8 @@ func runTest(args []string, config Config) error {
 	}
 
 	// Injects the Kontroller plugin and patches
-	if err := injectKontroller(tempDir, runDir); err != nil {
+	kontrollerDir, err := injectKontroller(tempDir, runDir)
+	if err != nil {
 		return err
 	}
 
@@ -225,14 +248,77 @@ func runTest(args []string, config Config) error {
 	if err != nil {
 		return err
 	}
-	defer logsFile.Close()
+	defer func() {
+		if koreaderStartCommand != nil {
+			_ = stopKOReader(koreaderStartCommand)
+		}
+	}()
+
+	emulatorDir, err := findEmulatorDir(cloneDir)
+	if err != nil {
+		return err
+	}
 
 	if err := waitUntilKontrollerReady(6 * time.Second); err != nil {
 		return err
 	}
 
-	if err := stopKOReader(koreaderStartCommand); err != nil {
-		return err
+	testError := runUserTests(emulatorDir, kontrollerDir, specDir)
+
+	stopErr := stopKOReader(koreaderStartCommand)
+	koreaderStartCommand = nil
+
+	logsErr := logsFile.Close()
+
+	return errors.Join(testError, stopErr, logsErr)
+}
+
+func runUserTests(emulatorDir string, kontrollerDir string, specDir string) error {
+	helperPath := filepath.Join(kontrollerDir, "lua", "kontroller", "busted.lua")
+
+	luaPath := strings.Join([]string{
+		"?.lua",
+		"common/?.lua",
+		"frontend/?.lua",
+		"spec/rocks/share/lua/5.1/?.lua",
+		"spec/rocks/share/lua/5.1/?/init.lua",
+		filepath.Join(kontrollerDir, "lua", "?.lua"),
+		filepath.Join(kontrollerDir, "lua", "?", "init.lua"),
+	}, ";")
+
+	luaCPath := strings.Join([]string{
+		"?.so",
+		"common/?.so",
+		"spec/rocks/lib/lua/5.1/?.so",
+	}, ";")
+
+	command := exec.Command(
+		"./luajit",
+		"-e",
+		`require "busted.runner" { standalone = false }`,
+		"/dev/null",
+		"--output=gtest",
+		"--helper="+helperPath,
+		"--loaders=lua",
+		"--sort-files",
+		"--",
+		specDir,
+	)
+
+	command.Dir = emulatorDir
+	command.Env = append(
+		os.Environ(),
+		"LUA_PATH="+luaPath,
+		"LUA_CPATH="+luaCPath,
+		"KONTROLLER_HOST=127.0.0.1",
+		"KONTROLLER_PORT=8060",
+	)
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+
+	if err := command.Run(); err != nil {
+		return fmt.Errorf("tests failed: %w", err)
 	}
+
 	return nil
 }
