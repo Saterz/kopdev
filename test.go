@@ -77,11 +77,17 @@ func injectKontroller(tempDir string, runDir string) error {
 	return nil
 }
 
-func runKOReader(runDir string) error {
+func runKOReader(runDir string, logsPath string) error {
+	logsFile, err := os.Create(logsPath)
+	if err != nil {
+		return err
+	}
+	defer logsFile.Close()
+
 	runCommand := exec.Command("./kodev", "run", "--no-build")
 	runCommand.Env = append(os.Environ(), "KO_HOME="+runDir)
-	runCommand.Stdout = os.Stdout
-	runCommand.Stderr = os.Stderr
+	runCommand.Stdout = logsFile
+	runCommand.Stderr = logsFile
 	if err := runCommand.Run(); err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
@@ -106,6 +112,11 @@ func runTest(args []string) error {
 	key := safeFilename(KOReaderDefaultVersion)
 
 	cloneDir := filepath.Join(kopdevCacheDir, "sources", key)
+	logsPath := filepath.Join(kopdevCacheDir, "logs", key+".log")
+	if err := os.MkdirAll(filepath.Dir(logsPath), 0o755); err != nil {
+		return err
+	}
+
 	runDir := filepath.Join(tempDir, "koreader", key)
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return nil
@@ -134,7 +145,7 @@ func runTest(args []string) error {
 	}
 
 	// Runs KOReader
-	if err := runKOReader(runDir); err != nil {
+	if err := runKOReader(runDir, logsPath); err != nil {
 		return err
 	}
 	return nil
