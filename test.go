@@ -26,8 +26,6 @@ func cloneKOReader(tag string, cloneDir string) error {
 		return err
 	}
 	cloneCommand := exec.Command("git", "clone", "--branch", tag, "--single-branch", "--depth", "1", "--recurse-submodules", "--shallow-submodules", KOReaderCloneURL, cloneDir)
-	cloneCommand.Stdout = os.Stdout
-	cloneCommand.Stderr = os.Stderr
 	if err := cloneCommand.Run(); err != nil {
 		return fmt.Errorf("clone koreader: %w", err)
 	}
@@ -36,8 +34,6 @@ func cloneKOReader(tag string, cloneDir string) error {
 
 func buildKOReader() error {
 	buildCommand := exec.Command("./kodev", "build")
-	buildCommand.Stdout = os.Stdout
-	buildCommand.Stderr = os.Stderr
 	if err := buildCommand.Run(); err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
@@ -52,8 +48,6 @@ func injectKontroller(tempDir string, runDir string) error {
 	defer os.RemoveAll(kontrollerCloneDir)
 
 	cloneCommand := exec.Command("git", "clone", "--depth", "1", KontrollerCloneURL, kontrollerCloneDir)
-	cloneCommand.Stdout = os.Stdout
-	cloneCommand.Stderr = os.Stderr
 	if err := cloneCommand.Run(); err != nil {
 		return fmt.Errorf("clone kontroller: %w", err)
 	}
@@ -124,9 +118,12 @@ func runTest(args []string) error {
 
 	// Clones KOReader is not done already
 	if !koreaderCloned(cloneDir) {
+		fmt.Printf("Cloning KOReader %s at %s\n", KOReaderDefaultVersion, cloneDir)
 		if err := cloneKOReader(KOReaderDefaultVersion, cloneDir); err != nil {
 			return err
 		}
+	} else {
+		fmt.Println("Using cached KOReader")
 	}
 
 	// Moves the process to the new cloned directory (needs thinking)
@@ -135,16 +132,19 @@ func runTest(args []string) error {
 	}
 
 	// Builds the cloned KOReader instance
+	fmt.Println("Building KOReader")
 	if err := buildKOReader(); err != nil {
 		return err
 	}
 
 	// Injects the Kontroller plugin and patches
+	fmt.Println("Injecting Kontroller plugin and patches")
 	if err := injectKontroller(tempDir, runDir); err != nil {
 		return err
 	}
 
 	// Runs KOReader
+	fmt.Println("Running KOReader")
 	if err := runKOReader(runDir, logsPath); err != nil {
 		return err
 	}
