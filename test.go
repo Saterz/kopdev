@@ -7,6 +7,12 @@ import (
 	"path/filepath"
 )
 
+// Temporary ssh url as the repo is currently private. Provide an https clone url when public
+var KontrollerCloneURL = "git@github.com:Saterz/Kontroller.git"
+
+// Not in use yet as Kontroller has not yet been released
+var KontrollerDefaultVersion = "v1.0.0"
+
 var KOReaderCloneURL = "https://github.com/koreader/koreader.git"
 var KOReaderDefaultVersion = "v2026.07"
 
@@ -23,7 +29,7 @@ func cloneKOReader(tag string, cloneDir string) error {
 	cloneCommand.Stdout = os.Stdout
 	cloneCommand.Stderr = os.Stderr
 	if err := cloneCommand.Run(); err != nil {
-		return fmt.Errorf("clone: %w", err)
+		return fmt.Errorf("clone koreader: %w", err)
 	}
 	return nil
 }
@@ -38,8 +44,42 @@ func buildKOReader() error {
 	return nil
 }
 
-func runKOReader() error {
+func injectKontroller(tempDir string, runDir string) error {
+	kontrollerCloneDir := filepath.Join(tempDir, "kontroller")
+	if err := os.MkdirAll(kontrollerCloneDir, 0o755); err != nil {
+		return err
+	}
+	defer os.RemoveAll(kontrollerCloneDir)
+
+	cloneCommand := exec.Command("git", "clone", "--depth", "1", KontrollerCloneURL, kontrollerCloneDir)
+	cloneCommand.Stdout = os.Stdout
+	cloneCommand.Stderr = os.Stderr
+	if err := cloneCommand.Run(); err != nil {
+		return fmt.Errorf("clone kontroller: %w", err)
+	}
+
+	kontrollerPluginsDir := filepath.Join(kontrollerCloneDir, "plugins")
+	kontrollerPatchesDir := filepath.Join(kontrollerCloneDir, "patches")
+
+	runPluginsDir := filepath.Join(runDir, "plugins")
+	runPatchesDir := filepath.Join(runDir, "patches")
+
+	if err := os.Mkdir(runPluginsDir, 0o755); err != nil {
+		return err
+	}
+	if err := os.Mkdir(runPatchesDir, 0o755); err != nil {
+		return err
+	}
+
+	copyFilteredFiles(kontrollerPluginsDir, runPluginsDir, nil)
+	copyFilteredFiles(kontrollerPatchesDir, runPatchesDir, nil)
+
+	return nil
+}
+
+func runKOReader(runDir string) error {
 	runCommand := exec.Command("./kodev", "run", "--no-build")
+	runCommand.Env = append(os.Environ(), "KO_HOME="+runDir)
 	runCommand.Stdout = os.Stdout
 	runCommand.Stderr = os.Stderr
 	if err := runCommand.Run(); err != nil {
@@ -55,24 +95,46 @@ func runTest(args []string) error {
 	if err != nil {
 		return err
 	}
+	tempDir, err := os.MkdirTemp("", "kopdev-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+
 	kopdevCacheDir := filepath.Join(cacheDir, "kopdev")
 
 	key := safeFilename(KOReaderDefaultVersion)
 
 	cloneDir := filepath.Join(kopdevCacheDir, "sources", key)
+	runDir := filepath.Join(tempDir, "koreader", key)
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		return nil
+	}
 
+	// Clones KOReader is not done already
 	if !koreaderCloned(cloneDir) {
 		if err := cloneKOReader(KOReaderDefaultVersion, cloneDir); err != nil {
 			return err
 		}
 	}
+
+	// Moves the process to the new cloned directory (needs thinking)
 	if err := os.Chdir(cloneDir); err != nil {
 		return err
 	}
+
+	// Builds the cloned KOReader instance
 	if err := buildKOReader(); err != nil {
 		return err
 	}
-	if err := runKOReader(); err != nil {
+
+	// Injects the Kontroller plugin and patches
+	if err := injectKontroller(tempDir, runDir); err != nil {
+		return err
+	}
+
+	// Runs KOReader
+	if err := runKOReader(runDir); err != nil {
 		return err
 	}
 	return nil
