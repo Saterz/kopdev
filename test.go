@@ -45,7 +45,6 @@ func injectKontroller(tempDir string, runDir string) error {
 	if err := os.MkdirAll(kontrollerCloneDir, 0o755); err != nil {
 		return err
 	}
-	defer os.RemoveAll(kontrollerCloneDir)
 
 	cloneCommand := exec.Command("git", "clone", "--depth", "1", KontrollerCloneURL, kontrollerCloneDir)
 	if err := cloneCommand.Run(); err != nil {
@@ -65,8 +64,25 @@ func injectKontroller(tempDir string, runDir string) error {
 		return err
 	}
 
-	copyFilteredFiles(kontrollerPluginsDir, runPluginsDir, nil)
-	copyFilteredFiles(kontrollerPatchesDir, runPatchesDir, nil)
+	if err := copyFilteredFiles(kontrollerPluginsDir, runPluginsDir, nil); err != nil {
+		return fmt.Errorf("copy Kontroller plugin: %w", err)
+	}
+	if err := copyFilteredFiles(kontrollerPatchesDir, runPatchesDir, nil); err != nil {
+		return fmt.Errorf("copy Kontroller patches: %w", err)
+	}
+
+	return nil
+}
+
+func injectUserPlugin(pluginName string, srcDir string, runDir string) error {
+	userPluginDir := filepath.Join(runDir, "plugins", pluginName+".koplugin")
+	if err := os.MkdirAll(userPluginDir, 0o755); err != nil {
+		return err
+	}
+
+	if err := copyFilteredFiles(srcDir, userPluginDir, nil); err != nil {
+		return fmt.Errorf("copy user patches: %w", err)
+	}
 
 	return nil
 }
@@ -88,7 +104,11 @@ func runKOReader(runDir string, logsPath string) error {
 	return nil
 }
 
-func runTest(args []string) error {
+func waitUntilKontrollerReady() error {
+	return nil
+}
+
+func runTest(args []string, config Config) error {
 	// flags := flag.NewFlagSet("test", flag.ContinueOnError)
 
 	cacheDir, err := os.UserCacheDir()
@@ -116,7 +136,7 @@ func runTest(args []string) error {
 		return nil
 	}
 
-	// Clones KOReader is not done already
+	// Clones KOReader if not done already
 	if !koreaderCloned(cloneDir) {
 		if err := cloneKOReader(KOReaderDefaultVersion, cloneDir); err != nil {
 			return err
@@ -135,6 +155,10 @@ func runTest(args []string) error {
 
 	// Injects the Kontroller plugin and patches
 	if err := injectKontroller(tempDir, runDir); err != nil {
+		return err
+	}
+
+	if err := injectUserPlugin(config.Plugin.Name, config.Plugin.SourceDir, runDir); err != nil {
 		return err
 	}
 
