@@ -1,10 +1,16 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
+	"time"
+
+	"github.com/ybbus/jsonrpc/v3"
 )
 
 // Temporary ssh url as the repo is currently private. Provide an https clone url when public
@@ -12,6 +18,8 @@ var KontrollerCloneURL = "git@github.com:Saterz/Kontroller.git"
 
 // Not in use yet as Kontroller has not yet been released
 var KontrollerDefaultVersion = "v1.0.0"
+
+var KontrollerEndpointURL = "http://127.0.0.1:8060/jsonrpc"
 
 var KOReaderCloneURL = "https://github.com/koreader/koreader.git"
 var KOReaderDefaultVersion = "v2026.07"
@@ -32,8 +40,9 @@ func cloneKOReader(tag string, cloneDir string) error {
 	return nil
 }
 
-func buildKOReader() error {
+func buildKOReader(cloneDir string) error {
 	buildCommand := exec.Command("./kodev", "build")
+	buildCommand.Dir = cloneDir
 	if err := buildCommand.Run(); err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
@@ -74,37 +83,92 @@ func injectKontroller(tempDir string, runDir string) error {
 	return nil
 }
 
-func injectUserPlugin(pluginName string, srcDir string, runDir string) error {
+func injectUserPlugin(pluginName string, srcDir string, runDir string, excluded []string) error {
 	userPluginDir := filepath.Join(runDir, "plugins", pluginName+".koplugin")
 	if err := os.MkdirAll(userPluginDir, 0o755); err != nil {
 		return err
 	}
 
-	if err := copyFilteredFiles(srcDir, userPluginDir, nil); err != nil {
-		return fmt.Errorf("copy user patches: %w", err)
+	if err := copyFilteredFiles(srcDir, userPluginDir, excluded); err != nil {
+		return fmt.Errorf("copy user plugin: %w", err)
 	}
 
 	return nil
 }
 
-func runKOReader(runDir string, logsPath string) error {
+func startKOReader(runDir string, cloneDir string, logsPath string) (*exec.Cmd, *os.File, error) {
 	logsFile, err := os.Create(logsPath)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	defer logsFile.Close()
 
 	runCommand := exec.Command("./kodev", "run", "--no-build")
 	runCommand.Env = append(os.Environ(), "KO_HOME="+runDir)
+	runCommand.Dir = cloneDir
 	runCommand.Stdout = logsFile
 	runCommand.Stderr = logsFile
-	if err := runCommand.Run(); err != nil {
-		return fmt.Errorf("run: %w", err)
+	runCommand.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := runCommand.Start(); err != nil {
+		return nil, nil, fmt.Errorf("start KOReader: %w", err)
 	}
-	return nil
+
+	return runCommand, logsFile, nil
 }
 
-func waitUntilKontrollerReady() error {
+// Wait until Kontroller is able to accept and respond to requests
+func waitUntilKontrollerReady(timeout time.Duration) error {
+	rpcClient := jsonrpc.NewClient(KontrollerEndpointURL)
+
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		response, err := rpcClient.Call(context.Background(), "ping")
+		if err != nil {
+			lastErr = err
+			time.Sleep(time.Second)
+			continue
+		}
+
+		if response.Error != nil {
+			return fmt.Errorf("jsonrpc error: %d: %s", response.Error.Code, response.Error.Message)
+		}
+
+		result, err := response.GetString()
+		if err != nil {
+			return err
+		}
+
+		if result == "pong" {
+			return nil
+		}
+
+		time.Sleep(time.Second)
+	}
+
+	if lastErr != nil {
+		return fmt.Errorf("Kontroller did not become ready: %w", lastErr)
+	}
+	return fmt.Errorf("Kontroller did not become ready")
+}
+
+func stopKOReader(command *exec.Cmd) error {
+	if command == nil || command.Process == nil {
+		return errors.New("KOReader process was nor started")
+	}
+
+	processGroupID := -command.Process.Pid
+
+	if err := syscall.Kill(processGroupID, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return fmt.Errorf("stop KOReader process group: %w", err)
+	}
+
+	waitError := command.Wait()
+
+	var exitError *exec.ExitError
+	if waitError != nil && !errors.As(waitError, &exitError) {
+		return fmt.Errorf("wait for KOReader: %w", waitError)
+	}
+
 	return nil
 }
 
@@ -143,13 +207,8 @@ func runTest(args []string, config Config) error {
 		}
 	}
 
-	// Moves the process to the new cloned directory (needs thinking)
-	if err := os.Chdir(cloneDir); err != nil {
-		return err
-	}
-
 	// Builds the cloned KOReader instance
-	if err := buildKOReader(); err != nil {
+	if err := buildKOReader(cloneDir); err != nil {
 		return err
 	}
 
@@ -158,12 +217,21 @@ func runTest(args []string, config Config) error {
 		return err
 	}
 
-	if err := injectUserPlugin(config.Plugin.Name, config.Plugin.SourceDir, runDir); err != nil {
+	if err := injectUserPlugin(config.Plugin.Name, config.Plugin.SourceDir, runDir, config.Deploy.Exclude); err != nil {
 		return err
 	}
 
-	// Runs KOReader
-	if err := runKOReader(runDir, logsPath); err != nil {
+	koreaderStartCommand, logsFile, err := startKOReader(runDir, cloneDir, logsPath)
+	if err != nil {
+		return err
+	}
+	defer logsFile.Close()
+
+	if err := waitUntilKontrollerReady(6 * time.Second); err != nil {
+		return err
+	}
+
+	if err := stopKOReader(koreaderStartCommand); err != nil {
 		return err
 	}
 	return nil
