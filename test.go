@@ -37,7 +37,7 @@ func findEmulatorDir(cloneDir string) (string, error) {
 		return "", fmt.Errorf("expected one emulator directory matching %q, found %d", pattern, len(matches))
 	}
 
-	return matches[0], nil
+	return filepath.Join(matches[0], "koreader"), nil
 }
 
 func koreaderCloned(cloneDir string) bool {
@@ -274,7 +274,7 @@ func runTest(args []string, config Config) error {
 }
 
 func runUserTests(emulatorDir string, kontrollerDir string, specDir string) error {
-	helperPath := filepath.Join(kontrollerDir, "lua", "kontroller", "busted.lua")
+	helperPath := filepath.Join(kontrollerDir, "src", "kontroller", "busted.lua")
 
 	luaPath := strings.Join([]string{
 		"?.lua",
@@ -282,8 +282,8 @@ func runUserTests(emulatorDir string, kontrollerDir string, specDir string) erro
 		"frontend/?.lua",
 		"spec/rocks/share/lua/5.1/?.lua",
 		"spec/rocks/share/lua/5.1/?/init.lua",
-		filepath.Join(kontrollerDir, "lua", "?.lua"),
-		filepath.Join(kontrollerDir, "lua", "?", "init.lua"),
+		filepath.Join(kontrollerDir, "src", "?.lua"),
+		filepath.Join(kontrollerDir, "src", "?", "init.lua"),
 	}, ";")
 
 	luaCPath := strings.Join([]string{
