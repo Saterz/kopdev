@@ -167,25 +167,19 @@ func waitUntilKontrollerReady(timeout time.Duration) error {
 	return fmt.Errorf("Kontroller did not become ready")
 }
 
-func stopKOReader(command *exec.Cmd) error {
-	if command == nil || command.Process == nil {
-		return errors.New("KOReader process was nor started")
+func exitKOReader(command *exec.Cmd) error {
+	rpcClient := jsonrpc.NewClient(KontrollerEndpointURL)
+
+	response, err := rpcClient.Call(context.Background(), "system.exit")
+	if err != nil {
+		return err
 	}
 
-	processGroupID := -command.Process.Pid
-
-	if err := syscall.Kill(processGroupID, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
-		return fmt.Errorf("stop KOReader process group: %w", err)
+	if response.Error != nil {
+		return fmt.Errorf("jsonrpc error: %d: %s", response.Error.Code, response.Error.Message)
 	}
 
-	waitError := command.Wait()
-
-	var exitError *exec.ExitError
-	if waitError != nil && !errors.As(waitError, &exitError) {
-		return fmt.Errorf("wait for KOReader: %w", waitError)
-	}
-
-	return nil
+	return command.Wait()
 }
 
 func runTest(args []string, config Config) error {
@@ -199,7 +193,6 @@ func runTest(args []string, config Config) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tempDir)
 
 	kopdevCacheDir := filepath.Join(cacheDir, "kopdev")
 
@@ -213,7 +206,7 @@ func runTest(args []string, config Config) error {
 
 	runDir := filepath.Join(tempDir, "koreader", key)
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
-		return nil
+		return err
 	}
 
 	projectDir, err := os.Getwd()
@@ -250,7 +243,7 @@ func runTest(args []string, config Config) error {
 	}
 	defer func() {
 		if koreaderStartCommand != nil {
-			_ = stopKOReader(koreaderStartCommand)
+			_ = exitKOReader(koreaderStartCommand)
 		}
 	}()
 
@@ -265,12 +258,12 @@ func runTest(args []string, config Config) error {
 
 	testError := runUserTests(emulatorDir, kontrollerDir, specDir)
 
-	stopErr := stopKOReader(koreaderStartCommand)
+	exitErr := exitKOReader(koreaderStartCommand)
 	koreaderStartCommand = nil
-
+	cleanupErr := os.RemoveAll(tempDir)
 	logsErr := logsFile.Close()
 
-	return errors.Join(testError, stopErr, logsErr)
+	return errors.Join(testError, exitErr, cleanupErr, logsErr)
 }
 
 func runUserTests(emulatorDir string, kontrollerDir string, specDir string) error {
