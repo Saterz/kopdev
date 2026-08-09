@@ -123,7 +123,6 @@ func startKOReader(runDir string, cloneDir string, logsPath string) (*exec.Cmd, 
 	runCommand.Dir = cloneDir
 	runCommand.Stdout = logsFile
 	runCommand.Stderr = logsFile
-	runCommand.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := runCommand.Start(); err != nil {
 		return nil, nil, fmt.Errorf("start KOReader: %w", err)
 	}
