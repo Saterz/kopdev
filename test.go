@@ -274,8 +274,6 @@ func runTest(args []string, config Config) error {
 }
 
 func runUserTests(emulatorDir string, kontrollerDir string, specDir string) error {
-	helperPath := filepath.Join(kontrollerDir, "src", "kontroller", "busted.lua")
-
 	luaPath := strings.Join([]string{
 		"?.lua",
 		"common/?.lua",
@@ -298,7 +296,6 @@ func runUserTests(emulatorDir string, kontrollerDir string, specDir string) erro
 		`require "busted.runner" { standalone = false }`,
 		"/dev/null",
 		"--output=gtest",
-		"--helper="+helperPath,
 		"--loaders=lua",
 		"--sort-files",
 		"--",
