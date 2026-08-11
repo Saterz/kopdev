@@ -277,7 +277,7 @@ func runTest(args []string, config Config) error {
 		return err
 	}
 
-	testError := runUserTests(emulatorDir, kontrollerDir, specDir)
+	testError := runUserTests(emulatorDir, kontrollerDir, specDir, runDir, config)
 
 	exitErr := exitKOReader(koreaderStartCommand)
 	koreaderStartCommand = nil
@@ -287,7 +287,7 @@ func runTest(args []string, config Config) error {
 	return errors.Join(testError, exitErr, cleanupErr, logsErr)
 }
 
-func runUserTests(emulatorDir string, kontrollerDir string, specDir string) error {
+func runUserTests(emulatorDir string, kontrollerDir string, specDir string, runDir string, config Config) error {
 	luaPath := strings.Join([]string{
 		"?.lua",
 		"common/?.lua",
@@ -296,6 +296,8 @@ func runUserTests(emulatorDir string, kontrollerDir string, specDir string) erro
 		"spec/rocks/share/lua/5.1/?/init.lua",
 		filepath.Join(kontrollerDir, "src", "?.lua"),
 		filepath.Join(kontrollerDir, "src", "?", "init.lua"),
+		filepath.Join(runDir, "plugins", config.Plugin.Name+".koplugin", "?.lua"),
+		filepath.Join(runDir, "plugins", config.Plugin.Name+".koplugin", "?", "init.lua"),
 	}, ";")
 
 	luaCPath := strings.Join([]string{
@@ -321,8 +323,8 @@ func runUserTests(emulatorDir string, kontrollerDir string, specDir string) erro
 		os.Environ(),
 		"LUA_PATH="+luaPath,
 		"LUA_CPATH="+luaCPath,
-		"KONTROLLER_HOST=127.0.0.1",
-		"KONTROLLER_PORT=8060",
+		"RUN_DIR="+runDir,
+		"PLUGIN_NAME="+config.Plugin.Name,
 	)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
