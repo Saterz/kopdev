@@ -25,6 +25,8 @@ var KontrollerEndpointURL = "http://127.0.0.1:8060/jsonrpc"
 var KOReaderCloneURL = "https://github.com/koreader/koreader.git"
 var KOReaderDefaultVersion = "v2026.07"
 
+const koreaderShutdownTimeout = 5 * time.Second
+
 func findEmulatorDir(cloneDir string) (string, error) {
 	pattern := filepath.Join(cloneDir, "koreader-emulator-*-debug")
 
@@ -139,6 +141,7 @@ func startKOReader(runDir string, cloneDir string, logsPath string) (*exec.Cmd, 
 	runCommand.Dir = cloneDir
 	runCommand.Stdout = logsFile
 	runCommand.Stderr = logsFile
+	runCommand.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := runCommand.Start(); err != nil {
 		return nil, nil, fmt.Errorf("start KOReader: %w", err)
 	}
@@ -185,7 +188,10 @@ func waitUntilKontrollerReady(timeout time.Duration) error {
 func exitKOReader(command *exec.Cmd) error {
 	rpcClient := jsonrpc.NewClient(KontrollerEndpointURL)
 
-	response, err := rpcClient.Call(context.Background(), "system.exit")
+	ctx, cancel := context.WithTimeout(context.Background(), koreaderShutdownTimeout)
+	defer cancel()
+
+	response, err := rpcClient.Call(ctx, "system.exit")
 	if err != nil {
 		return err
 	}
@@ -194,7 +200,48 @@ func exitKOReader(command *exec.Cmd) error {
 		return fmt.Errorf("jsonrpc error: %d: %s", response.Error.Code, response.Error.Message)
 	}
 
-	return command.Wait()
+	return waitForKOReaderExit(command)
+}
+
+func stopKOReader(command *exec.Cmd) error {
+	if command == nil || command.Process == nil {
+		return errors.New("KOReader process was not started")
+	}
+
+	processGroupID := -command.Process.Pid
+
+	if err := syscall.Kill(processGroupID, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return fmt.Errorf("stop KOReader process group: %w", err)
+	}
+
+	return waitForKOReaderExit(command)
+}
+
+func waitForKOReaderExit(command *exec.Cmd) error {
+	waitResult := make(chan error, 1)
+
+	go func() {
+		waitResult <- command.Wait()
+	}()
+
+	var waitError error
+	select {
+	case waitError = <-waitResult:
+	case <-time.After(koreaderShutdownTimeout):
+		processGroupID := -command.Process.Pid
+		if err := syscall.Kill(processGroupID, syscall.SIGKILL); err != nil &&
+			!errors.Is(err, syscall.ESRCH) {
+			return fmt.Errorf("kill stuck KOReader process group: %w", err)
+		}
+		waitError = <-waitResult
+	}
+
+	var exitError *exec.ExitError
+	if waitError != nil && !errors.As(waitError, &exitError) {
+		return fmt.Errorf("wait for KOReader: %w", waitError)
+	}
+
+	return nil
 }
 
 func runTest(args []string, config Config) error {
@@ -264,7 +311,7 @@ func runTest(args []string, config Config) error {
 	}
 	defer func() {
 		if koreaderStartCommand != nil {
-			_ = exitKOReader(koreaderStartCommand)
+			_ = stopKOReader(koreaderStartCommand)
 		}
 	}()
 
