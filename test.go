@@ -112,6 +112,22 @@ func injectUserPlugin(pluginName string, srcDir string, runDir string, excluded 
 	return nil
 }
 
+func injectUserFixtures(specDir string, runDir string) error {
+	fixtureDir := filepath.Join(specDir, "fixtures")
+	if info, err := os.Stat(fixtureDir); err == nil {
+		if !info.IsDir() {
+			return fmt.Errorf("test fixtures path is not a directory: %q", fixtureDir)
+		}
+		if err := copyFiles(fixtureDir, runDir); err != nil {
+			return fmt.Errorf("copy test fixtures: %w", err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect test fixtures: %w", err)
+	}
+
+	return nil
+}
+
 func startKOReader(runDir string, cloneDir string, logsPath string) (*exec.Cmd, *os.File, error) {
 	logsFile, err := os.Create(logsPath)
 	if err != nil {
@@ -232,7 +248,13 @@ func runTest(args []string, config Config) error {
 		return err
 	}
 
+	// Injects the user's plugin which will be tested
 	if err := injectUserPlugin(config.Plugin.Name, config.Plugin.SourceDir, runDir, config.Deploy.Exclude); err != nil {
+		return err
+	}
+
+	// Injects optional user fixtures
+	if err := injectUserFixtures(specDir, runDir); err != nil {
 		return err
 	}
 

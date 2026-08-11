@@ -171,3 +171,7 @@ func copyFilteredFiles(sourceDir string, outputDir string, exclude []string) err
 	}
 	return nil
 }
+
+func copyFiles(sourceDir string, outputDir string) error {
+	return copyFilteredFiles(sourceDir, outputDir, nil)
+}

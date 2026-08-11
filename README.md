@@ -6,6 +6,13 @@ A utility CLI tool for developing KOReader plugins.
 
 *TBD* - This plugin is still in its early state and a lot of things must be fixed/improve/added before its first initial release. Major (and potentially breaking) changes can be made without warning between commits. **Use at your own risk!!!!**
 
+## Tests
+
+Before KOReader starts, `kopdev test` copies `specs/fixtures/` into its
+temporary `KO_HOME`. Put files in the same relative paths KOReader expects.
+For example, a plugin can supply test-only settings at
+`specs/fixtures/settings/<plugin>_settings.lua`.
+
 ## TODO
 
 - [ ] FIND A NEW NAME. The current one is too close to KOReader's `kodev` command.
