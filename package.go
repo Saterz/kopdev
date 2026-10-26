@@ -9,9 +9,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/Saterz/kopdev/internal/luasrcdiet"
 )
 
-func createPluginZip(pluginName string, sourceDir string, outputDir string, exclude []string) error {
+func createPluginZip(pluginName string, sourceDir string, outputDir string, exclude []string, minify bool) error {
 	sourceDir = filepath.Clean(sourceDir)
 	outputDir = filepath.Clean(outputDir)
 
@@ -91,8 +94,21 @@ func createPluginZip(pluginName string, sourceDir string, outputDir string, excl
 			return fmt.Errorf("open source file %q: %w", path, err)
 		}
 
-		_, copyErr := io.Copy(destination, source)
-		closeErr := source.Close()
+		var copyErr error
+		var closeErr error
+		switch minify {
+		case true:
+			minified, err := luasrcdiet.Optimize(source)
+			if err != nil {
+				return fmt.Errorf("minify %q: %w", path, err)
+			}
+
+			_, copyErr = io.Copy(destination, strings.NewReader(minified))
+			closeErr = source.Close()
+		case false:
+			_, copyErr = io.Copy(destination, source)
+			closeErr = source.Close()
+		}
 
 		if copyErr != nil {
 			return fmt.Errorf(
@@ -143,6 +159,7 @@ func runPackage(args []string, config Config) error {
 	)
 
 	output := flags.String("output", config.Package.OutputDir, "output directory of the ZIP file")
+	minify := flags.Bool("minify", true, "minify the plugin source code before packaging it")
 
 	// force := flags.Bool("force", false, "overwrite an existing ZIP file")
 
@@ -168,7 +185,7 @@ func runPackage(args []string, config Config) error {
 		return errors.New("usage: kopdev package [options] [plugin-directory]")
 	}
 
-	if err := createPluginZip(config.Plugin.Name, pluginDirectory, *output, config.Package.Exclude); err != nil {
+	if err := createPluginZip(config.Plugin.Name, pluginDirectory, *output, config.Package.Exclude, *minify); err != nil {
 		return err
 	}
 
