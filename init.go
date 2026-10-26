@@ -9,11 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 //go:embed all:templates
 var templateFiles embed.FS
+
+var projectNamePattern = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 func runGit(directory string, args ...string) error {
 	command := exec.Command("git", append([]string{"-C", directory}, args...)...)
@@ -30,12 +33,12 @@ func runInit(args []string) error {
 	setUsage(
 		flags,
 		"kopdev init [options] <plugin-name> [plugin-directory]",
-		"Create a new KOReader plugin project from a template.",
+		"Create a new KOReader plugin project.",
 		"\tplugin-name       Name of the plugin without the .koplugin suffix.\n\tplugin-directory  Parent directory for the project. Defaults to \".\".",
-		"\tkopdev init my-awesome-plugin\n\tkopdev init --level full my-awesome-plugin ./plugins",
+		"\tkopdev init my-awesome-plugin\n\tkopdev init --project plugin my_awesome_plugin ./plugins",
 	)
 
-	level := flags.String("level", "minimal", "template level: full or minimal")
+	project := flags.String("project", "plugin", "template project: plugin or patch")
 
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -44,10 +47,10 @@ func runInit(args []string) error {
 		return err
 	}
 
-	switch *level {
-	case "minimal", "full":
+	switch *project {
+	case "plugin", "patch":
 	default:
-		return fmt.Errorf("unknown template level %q: expected minimal or full", *level)
+		return fmt.Errorf("unknown template level %q: expected plugin or patch", *project)
 	}
 
 	positionalArgs := flags.Args()
@@ -56,26 +59,35 @@ func runInit(args []string) error {
 		return errors.New("usage: kopdev init [options] <plugin-name> [plugin-directory]")
 	}
 
-	pluginName := positionalArgs[0]
-	pluginDir := "."
+	projectName := positionalArgs[0]
+	projectDir := "."
 
-	if len(positionalArgs) == 2 {
-		pluginDir = positionalArgs[1]
+	if !projectNamePattern.MatchString(projectName) {
+		return errors.New("project name must start with a letter or underscore and contain only letters, digits, and underscores")
 	}
 
-	if err := validatePluginName(pluginName); err != nil {
+	if len(positionalArgs) == 2 {
+		projectDir = positionalArgs[1]
+	}
+
+	if err := validatePluginName(projectName); err != nil {
 		return fmt.Errorf("init: %w", err)
 	}
 
-	pluginDir = filepath.Join(pluginDir, pluginName+".koplugin")
-
-	templateRoot, err := fs.Sub(templateFiles, "templates/"+*level)
-	if err != nil {
-		return fmt.Errorf("load %s template: %w", *level, err)
+	switch *project {
+	case "plugin":
+		projectDir = filepath.Join(projectDir, projectName+".koplugin")
+	case "patch":
+		projectDir = filepath.Join(projectDir, projectName+".patches")
 	}
 
-	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
-		return fmt.Errorf("creating plugin directory: %w", err)
+	templateRoot, err := fs.Sub(templateFiles, "templates/"+*project)
+	if err != nil {
+		return fmt.Errorf("load %s template: %w", *project, err)
+	}
+
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		return fmt.Errorf("creating project directory: %w", err)
 	}
 
 	if err := fs.WalkDir(templateRoot, ".", func(path string, entry fs.DirEntry, walkErr error) error {
@@ -85,7 +97,7 @@ func runInit(args []string) error {
 
 		path = filepath.FromSlash(path)
 
-		destination := filepath.Join(pluginDir, path)
+		destination := filepath.Join(projectDir, path)
 
 		if entry.IsDir() {
 			return os.MkdirAll(destination, 0o755)
@@ -97,8 +109,8 @@ func runInit(args []string) error {
 		}
 
 		replacer := strings.NewReplacer(
-			"{{PLUGIN_NAME_UPPER_FIRST}}", upperFirst(pluginName),
-			"{{PLUGIN_NAME_LOWER_FIRST}}", lowerFirst(pluginName),
+			"TEMP_PLUGIN_NAME_UPPER", upperFirst(projectName),
+			"TEMP_PLUGIN_NAME_LOWER", lowerFirst(projectName),
 		)
 
 		contents = []byte(replacer.Replace(string(contents)))
@@ -109,19 +121,13 @@ func runInit(args []string) error {
 
 		return nil
 	}); err != nil {
-		return fmt.Errorf("copy %s template: %w", *level, err)
+		return fmt.Errorf("copy %s template: %w", *project, err)
 	}
 
-	if err := runGit(pluginDir, "init", "--initial-branch=main"); err != nil {
+	if err := runGit(projectDir, "init", "--initial-branch=main"); err != nil {
 		return fmt.Errorf("initialize Git repository: %w", err)
 	}
 
-	if *level == "full" {
-		if err := runGit(pluginDir, "submodule", "add", "https://github.com/koreader/koreader.git", "koreader"); err != nil {
-			return fmt.Errorf("add KOReader submodule: %w", err)
-		}
-	}
-
-	fmt.Printf("Created plugin %q in %s\n", pluginName, pluginDir)
+	fmt.Printf("Created plugin %q in %s\n", projectName, projectDir)
 	return nil
 }
