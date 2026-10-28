@@ -1,0 +1,11 @@
+---@alias Direction
+---| "north"
+---| "south"
+---| "east"
+---| "west"
+---| "northeast"
+---| "northwest"
+---| "southeast"
+---| "southwest"
+
+---@alias WidgetNode {ref: string, test_id: string|nil, id: string|nil, name: string|nil, type: string|nil, text: string|nil, fitted_text: string|nil, fitted_text_has_ellipsis: boolean|nil, enabled: boolean, invisible: boolean, modal: boolean, toast: boolean, dimen: {x: number, y: number, w: number, h: number}|nil, child_count: number, depth: number, children: WidgetNode[], truncated: boolean|nil, pos: {x: number, y: number}|nil}

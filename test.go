@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,19 +13,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Saterz/kopdev/internal/kontroller"
 	"github.com/ybbus/jsonrpc/v3"
 )
 
-// Temporary ssh url as the repo is currently private. Provide an https clone url when public
-var KontrollerCloneURL = "git@github.com:Saterz/Kontroller.git"
-
-// Not in use yet as Kontroller has not yet been released
-var KontrollerDefaultVersion = "v1.0.0"
-
-var KontrollerEndpointURL = "http://127.0.0.1:8060/jsonrpc"
-
-var KOReaderCloneURL = "https://github.com/koreader/koreader.git"
-var KOReaderDefaultVersion = "v2026.07"
+var DefaultKOReaderCloneURL = "https://github.com/koreader/koreader.git"
+var DefaultKOReaderVersion = "v2026.07"
 
 const koreaderShutdownTimeout = 5 * time.Second
 
@@ -47,20 +42,26 @@ func koreaderCloned(cloneDir string) bool {
 	return err == nil && info.IsDir()
 }
 
-func cloneKOReader(tag string, cloneDir string) error {
+func cloneKOReader(koreaderCloneURL string, tag string, cloneDir string, debug bool) error {
 	if err := os.MkdirAll(cloneDir, 0o755); err != nil {
 		return err
 	}
-	cloneCommand := exec.Command("git", "clone", "--branch", tag, "--single-branch", "--depth", "1", "--recurse-submodules", "--shallow-submodules", KOReaderCloneURL, cloneDir)
+	cloneCommand := exec.Command("git", "clone", "--branch", tag, "--single-branch", "--depth", "1", "--recurse-submodules", "--shallow-submodules", koreaderCloneURL, cloneDir)
+	if debug {
+		cloneCommand.Stdout = os.Stdout
+	}
 	if err := cloneCommand.Run(); err != nil {
 		return fmt.Errorf("clone koreader: %w", err)
 	}
 	return nil
 }
 
-func buildKOReader(cloneDir string) error {
+func buildKOReader(cloneDir string, debug bool) error {
 	buildCommand := exec.Command("./kodev", "build")
 	buildCommand.Dir = cloneDir
+	if debug {
+		buildCommand.Stdout = os.Stdout
+	}
 	if err := buildCommand.Run(); err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
@@ -68,26 +69,52 @@ func buildKOReader(cloneDir string) error {
 }
 
 func injectKontroller(tempDir string, runDir string) (string, error) {
-	kontrollerCloneDir := filepath.Join(tempDir, "kontroller")
-	if err := os.MkdirAll(kontrollerCloneDir, 0o755); err != nil {
+	kontrollerDestinationDir := filepath.Join(tempDir, "kontroller")
+	if err := os.MkdirAll(kontrollerDestinationDir, 0o755); err != nil {
 		return "", err
 	}
 
-	cloneCommand := exec.Command("git", "clone", "--depth", "1", KontrollerCloneURL, kontrollerCloneDir)
-	if err := cloneCommand.Run(); err != nil {
-		return "", fmt.Errorf("clone kontroller: %w", err)
+	source, err := fs.Sub(kontroller.KontrollerFiles, "src")
+	if err != nil {
+		return "", fmt.Errorf("load Kontroller: %w", err)
 	}
 
-	kontrollerPluginsDir := filepath.Join(kontrollerCloneDir, "plugins")
-	kontrollerPatchesDir := filepath.Join(kontrollerCloneDir, "patches")
+	if err := fs.WalkDir(source, ".", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		target := filepath.Join(kontrollerDestinationDir, filepath.FromSlash(path))
+
+		if entry.IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return fmt.Errorf("create directory %q: %s", target, err)
+			}
+			return nil
+		}
+
+		data, err := fs.ReadFile(source, path)
+		if err != nil {
+			return fmt.Errorf("read file: %w", err)
+		}
+
+		if err := os.WriteFile(target, data, 0o644); err != nil {
+			return fmt.Errorf("write file %q: %w", target, err)
+		}
+
+		return nil
+	}); err != nil {
+		return "", fmt.Errorf("copy Kontroller: %w", err)
+	}
+
+	kontrollerPluginsDir := filepath.Join(kontrollerDestinationDir, "plugins")
+	kontrollerPatchesDir := filepath.Join(kontrollerDestinationDir, "patches")
 
 	runPluginsDir := filepath.Join(runDir, "plugins")
 	runPatchesDir := filepath.Join(runDir, "patches")
 
-	if err := os.Mkdir(runPluginsDir, 0o755); err != nil {
-		return "", err
-	}
-	if err := os.Mkdir(runPatchesDir, 0o755); err != nil {
+	// The patches folder is not created automatically by KOReader
+	if err := os.MkdirAll(runPatchesDir, 0o755); err != nil {
 		return "", err
 	}
 
@@ -98,7 +125,7 @@ func injectKontroller(tempDir string, runDir string) (string, error) {
 		return "", fmt.Errorf("copy Kontroller patches: %w", err)
 	}
 
-	return kontrollerCloneDir, nil
+	return kontrollerDestinationDir, nil
 }
 
 func injectUserPlugin(pluginName string, srcDir string, runDir string, excluded []string) error {
@@ -151,7 +178,7 @@ func startKOReader(runDir string, cloneDir string, logsPath string) (*exec.Cmd, 
 
 // Wait until Kontroller is able to accept and respond to requests
 func waitUntilKontrollerReady(timeout time.Duration) error {
-	rpcClient := jsonrpc.NewClient(KontrollerEndpointURL)
+	rpcClient := jsonrpc.NewClient("http://127.0.0.1:8060/jsonrpc")
 
 	deadline := time.Now().Add(timeout)
 	var lastErr error
@@ -186,7 +213,7 @@ func waitUntilKontrollerReady(timeout time.Duration) error {
 }
 
 func exitKOReader(command *exec.Cmd) error {
-	rpcClient := jsonrpc.NewClient(KontrollerEndpointURL)
+	rpcClient := jsonrpc.NewClient("http://127.0.0.1:8060/jsonrpc")
 
 	ctx, cancel := context.WithTimeout(context.Background(), koreaderShutdownTimeout)
 	defer cancel()
@@ -245,7 +272,18 @@ func waitForKOReaderExit(command *exec.Cmd) error {
 }
 
 func runTest(args []string, config Config) error {
-	// flags := flag.NewFlagSet("test", flag.ContinueOnError)
+	flags := flag.NewFlagSet("test", flag.ContinueOnError)
+
+	debug := flags.Bool("debug", false, "Run with debug enabled to troubleshoot issues")
+
+	koreaderCloneURL := flags.String("koreader-clone-url", DefaultKOReaderCloneURL, "KOReader's clone URL")
+	koreaderVersion := flags.String("koreader-version", DefaultKOReaderVersion, "KOReader's version")
+
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+
+	positionalArgs := flags.Args()
 
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
@@ -258,7 +296,7 @@ func runTest(args []string, config Config) error {
 
 	kopdevCacheDir := filepath.Join(cacheDir, "kopdev")
 
-	key := safeFilename(KOReaderDefaultVersion)
+	key := safeFilename(*koreaderVersion)
 
 	cloneDir := filepath.Join(kopdevCacheDir, "sources", key)
 	logsPath := filepath.Join(kopdevCacheDir, "logs", key+".log")
@@ -279,13 +317,13 @@ func runTest(args []string, config Config) error {
 
 	// Clones KOReader if not done already
 	if !koreaderCloned(cloneDir) {
-		if err := cloneKOReader(KOReaderDefaultVersion, cloneDir); err != nil {
+		if err := cloneKOReader(*koreaderCloneURL, *koreaderVersion, cloneDir, *debug); err != nil {
 			return err
 		}
 	}
 
 	// Builds the cloned KOReader instance
-	if err := buildKOReader(cloneDir); err != nil {
+	if err := buildKOReader(cloneDir, *debug); err != nil {
 		return err
 	}
 
@@ -324,25 +362,25 @@ func runTest(args []string, config Config) error {
 		return err
 	}
 
-	testError := runUserTests(emulatorDir, kontrollerDir, specDir, runDir, config)
+	testError := runUserTests(emulatorDir, kontrollerDir, specDir, runDir, config, positionalArgs)
 
 	exitErr := exitKOReader(koreaderStartCommand)
 	koreaderStartCommand = nil
-	cleanupErr := os.RemoveAll(tempDir)
+	// cleanupErr := os.RemoveAll(tempDir)
 	logsErr := logsFile.Close()
 
-	return errors.Join(testError, exitErr, cleanupErr, logsErr)
+	return errors.Join(testError, exitErr, logsErr)
 }
 
-func runUserTests(emulatorDir string, kontrollerDir string, specDir string, runDir string, config Config) error {
+func runUserTests(emulatorDir string, kontrollerDir string, specDir string, runDir string, config Config, bustedArgs []string) error {
 	luaPath := strings.Join([]string{
 		"?.lua",
 		"common/?.lua",
 		"frontend/?.lua",
 		"spec/rocks/share/lua/5.1/?.lua",
 		"spec/rocks/share/lua/5.1/?/init.lua",
-		filepath.Join(kontrollerDir, "src", "?.lua"),
-		filepath.Join(kontrollerDir, "src", "?", "init.lua"),
+		filepath.Join(filepath.Dir(kontrollerDir), "?.lua"),
+		filepath.Join(filepath.Dir(kontrollerDir), "?", "init.lua"),
 		filepath.Join(runDir, "plugins", config.Plugin.Name+".koplugin", "?.lua"),
 		filepath.Join(runDir, "plugins", config.Plugin.Name+".koplugin", "?", "init.lua"),
 	}, ";")
@@ -353,17 +391,18 @@ func runUserTests(emulatorDir string, kontrollerDir string, specDir string, runD
 		"spec/rocks/lib/lua/5.1/?.so",
 	}, ";")
 
-	command := exec.Command(
-		"./luajit",
+	args := []string{
 		"-e",
 		`require "busted.runner" { standalone = false }`,
 		"/dev/null",
 		"--output=gtest",
 		"--loaders=lua",
 		"--sort-files",
-		"--",
-		specDir,
-	)
+	}
+	args = append(args, bustedArgs...)
+	args = append(args, "--", specDir)
+
+	command := exec.Command("./luajit", args...)
 
 	command.Dir = emulatorDir
 	command.Env = append(
