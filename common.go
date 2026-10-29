@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -8,7 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
+
+	"github.com/google/go-github/v93/github"
 )
 
 func commandError(err error, output []byte) error {
@@ -36,6 +40,15 @@ func setUsage(flags *flag.FlagSet, usage, description, arguments, examples strin
 	}
 }
 
+func getKopdevCacheDir() (*string, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	kopdevCacheDir := filepath.Join(cacheDir, "kopdev")
+	return &kopdevCacheDir, nil
+}
+
 func upperFirst(value string) string {
 	characters := []rune(value)
 	if len(characters) > 0 {
@@ -50,6 +63,15 @@ func lowerFirst(value string) string {
 		characters[0] = unicode.ToLower(characters[0])
 	}
 	return string(characters)
+}
+
+func safeFilename(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' {
+			return r
+		}
+		return '_'
+	}, value)
 }
 
 func shellQuote(value string) string {
@@ -83,6 +105,28 @@ func matchesExclude(path string, exclude []string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+func getLatestKOReaderReleaseTagName() (*string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	client, err := github.NewClient()
+	if err != nil {
+		return nil, err
+	}
+
+	release, _, err := client.Repositories.GetLatestRelease(ctx, "koreader", "koreader")
+	if err != nil {
+		return nil, fmt.Errorf("get latest KOReader release: %w", err)
+	}
+
+	tagName := release.GetTagName()
+	if tagName == "" {
+		return nil, fmt.Errorf("latest KOReader release has no tag")
+	}
+
+	return &tagName, nil
 }
 
 // Copies the plugin source files, which aren't part of the given exclusion array, from a directory to another

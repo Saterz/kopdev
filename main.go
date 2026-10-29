@@ -97,6 +97,8 @@ func run(args []string) error {
 		return runWithConfig(args[1:], runPackage)
 	case "deploy":
 		return runWithConfig(args[1:], runDeploy)
+	case "run":
+		return runWithConfig(args[1:], runRunCommand)
 	case "config":
 		return runConfig(args[1:])
 	case "version", "--version", "-v":
